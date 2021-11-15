@@ -397,15 +397,15 @@ function healthcheck {
     CTLRMGR_PID=
   fi
 
-  if [[ -n "${KUBELET_PID-}" ]] && ! sudo kill -0 "${KUBELET_PID}" 2>/dev/null; then
-    warning_log "kubelet terminated unexpectedly, see ${KUBELET_LOG}"
-    KUBELET_PID=
-  fi
+  # if [[ -n "${KUBELET_PID-}" ]] && ! sudo kill -0 "${KUBELET_PID}" 2>/dev/null; then
+  #   warning_log "kubelet terminated unexpectedly, see ${KUBELET_LOG}"
+  #   KUBELET_PID=
+  # fi
 
-  if [[ -n "${PROXY_PID-}" ]] && ! sudo kill -0 "${PROXY_PID}" 2>/dev/null; then
-    warning_log "kube-proxy terminated unexpectedly, see ${PROXY_LOG}"
-    PROXY_PID=
-  fi
+  # if [[ -n "${PROXY_PID-}" ]] && ! sudo kill -0 "${PROXY_PID}" 2>/dev/null; then
+  #   warning_log "kube-proxy terminated unexpectedly, see ${PROXY_LOG}"
+  #   PROXY_PID=
+  # fi
 
   if [[ -n "${SCHEDULER_PID-}" ]] && ! sudo kill -0 "${SCHEDULER_PID}" 2>/dev/null; then
     warning_log "scheduler terminated unexpectedly, see ${SCHEDULER_LOG}"
@@ -845,17 +845,18 @@ EOF
       fi
     } >>/tmp/kubelet.yaml
 
+    echo ${all_kubelet_flags[@]}
     # shellcheck disable=SC2024
-    sudo -E "${GO_OUT}/kubelet" "${all_kubelet_flags[@]}" \
-      --config=/tmp/kubelet.yaml >"${KUBELET_LOG}" 2>&1 &
-    KUBELET_PID=$!
+    # sudo -E "${GO_OUT}/kubelet" "${all_kubelet_flags[@]}" \
+    #   --config=/tmp/kubelet.yaml >"${KUBELET_LOG}" 2>&1 &
+    # KUBELET_PID=$!
 
     # Quick check that kubelet is running.
-    if [ -n "${KUBELET_PID}" ] && ps -p ${KUBELET_PID} > /dev/null; then
-      echo "kubelet ( ${KUBELET_PID} ) is running."
-    else
-      cat "${KUBELET_LOG}" ; exit 1
-    fi
+    # if [ -n "${KUBELET_PID}" ] && ps -p ${KUBELET_PID} > /dev/null; then
+    #   echo "kubelet ( ${KUBELET_PID} ) is running."
+    # else
+    #   cat "${KUBELET_LOG}" ; exit 1
+    # fi
 }
 
 function start_kubeproxy {
@@ -864,7 +865,7 @@ function start_kubeproxy {
     if [[ "${START_MODE}" != "nokubelet" ]]; then
       # wait for kubelet collect node information
       echo "wait kubelet ready"
-      wait_node_ready
+      # wait_node_ready
     fi
 
     cat <<EOF > /tmp/kube-proxy.yaml
@@ -1165,7 +1166,8 @@ fi
 
 if [[ "${START_MODE}" != "kubeletonly" ]]; then
   if [[ "${START_MODE}" != "nokubeproxy" ]]; then
-    start_kubeproxy
+    # start_kubeproxy
+    echo "skip"
   fi
 fi
 if [[ -n "${PSP_ADMISSION}" && "${AUTHORIZATION_MODE}" = *RBAC* ]]; then

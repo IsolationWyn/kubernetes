@@ -602,11 +602,26 @@ func (cache *schedulerCache) AddNode(node *v1.Node) error {
 		n = newNodeInfoListItem(framework.NewNodeInfo())
 		cache.nodes[node.Name] = n
 	} else {
+		// 镜像清理, 从 imageState 中移除镜像名
 		cache.removeNodeImageStates(n.info.Node())
 	}
+	// 把节点移到链表头
 	cache.moveNodeInfoToHead(node.Name)
 
+	// 把节点加入到 zone 的 nodeTree 中
 	cache.nodeTree.addNode(node)
+	// 添加节点 image State
+	// images:
+	// - names:
+	//   - 172.31.255.3:5000/mongodb@sha256:2d0f5fa01d5af35d1bbc70e7900e2d5eb587af8b3850eb159f0c9b9ea23f6952
+	//   - 172.31.255.3:5000/mongodb:4.4.6-debian-10-r29
+	//   sizeBytes: 457707019
+	// - names:
+	//   - 172.31.255.3:5000/mariadb-galera@sha256:642ec483c1af02821b383b8a4e764753c4c8e00c7b571a862843ce28af106176
+	//   - docker.io/bitnami/mariadb-galera@sha256:642ec483c1af02821b383b8a4e764753c4c8e00c7b571a862843ce28af106176
+	//   - 172.31.255.3:5000/mariadb-galera:10.5.11-debian-10-r24
+	//   - docker.io/bitnami/mariadb-galera:10.5.11-debian-10-r24
+	//   sizeBytes: 346629909
 	cache.addNodeImageStates(node, n.info)
 	return n.info.SetNode(node)
 }

@@ -98,6 +98,7 @@ func (g *genericScheduler) Schedule(ctx context.Context, fwk framework.Framework
 	trace := utiltrace.New("Scheduling", utiltrace.Field{Key: "namespace", Value: pod.Namespace}, utiltrace.Field{Key: "name", Value: pod.Name})
 	defer trace.LogIfLong(100 * time.Millisecond)
 
+	// 给所有 node 记录快照
 	if err := g.snapshot(); err != nil {
 		return result, err
 	}

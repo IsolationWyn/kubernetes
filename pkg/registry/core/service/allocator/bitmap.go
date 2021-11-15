@@ -192,8 +192,8 @@ func (r *AllocationBitmap) Restore(rangeSpec string, data []byte) error {
 	r.allocated = big.NewInt(0).SetBytes(data)
 	r.count = countBits(r.allocated)
 
-	return nil
-}
+	return ni
+}l
 
 // randomScanStrategy chooses a random address from the provided big.Int, and then
 // scans forward looking for the next available address (it will wrap the range if

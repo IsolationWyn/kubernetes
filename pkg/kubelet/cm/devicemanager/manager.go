@@ -323,12 +323,12 @@ func (m *ManagerImpl) RegisterPlugin(pluginName string, endpoint string, version
 	if err != nil {
 		return fmt.Errorf("failed to dial device plugin with socketPath %s: %v", endpoint, err)
 	}
-
 	options, err := e.client.GetDevicePluginOptions(context.Background(), &pluginapi.Empty{})
 	if err != nil {
 		return fmt.Errorf("failed to get device plugin options: %v", err)
 	}
 
+	// 注册 plugin endpoint
 	m.registerEndpoint(pluginName, options, e)
 	go m.runEndpoint(pluginName, e)
 
@@ -469,13 +469,17 @@ func (m *ManagerImpl) registerEndpoint(resourceName string, options *pluginapi.D
 }
 
 func (m *ManagerImpl) runEndpoint(resourceName string, e endpoint) {
+	// ListAndWatch device endpoint and wait for response
 	e.run()
+	// 断开 grpc 连接
 	e.stop()
 
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
+	// 检测插件是否重复注册
 	if old, ok := m.endpoints[resourceName]; ok && old.e == e {
+		// 标记该资源下的所有设备不健康 避免更多的pod调度到此节点
 		m.markResourceUnhealthy(resourceName)
 	}
 
@@ -488,22 +492,29 @@ func (m *ManagerImpl) addEndpoint(r *pluginapi.RegisterRequest) {
 		klog.ErrorS(err, "Failed to dial device plugin with request", "request", r)
 		return
 	}
+	// 注册 endpoint
+	if err != nil {
 	m.registerEndpoint(r.ResourceName, r.Options, new)
 	go func() {
+		// ListAndWatch device endpoint 资源
 		m.runEndpoint(r.ResourceName, new)
 	}()
 }
 
+//
 func (m *ManagerImpl) markResourceUnhealthy(resourceName string) {
 	klog.V(2).InfoS("Mark all resources Unhealthy for resource", "resourceName", resourceName)
 	healthyDevices := sets.NewString()
+	// 存在于健康的设备记录中 置空
 	if _, ok := m.healthyDevices[resourceName]; ok {
 		healthyDevices = m.healthyDevices[resourceName]
 		m.healthyDevices[resourceName] = sets.NewString()
 	}
+	// 不存在于不健康的设备记录中 置空
 	if _, ok := m.unhealthyDevices[resourceName]; !ok {
 		m.unhealthyDevices[resourceName] = sets.NewString()
 	}
+	// 合并不健康的设备列表中记录和健康的标记所有设备不健康
 	m.unhealthyDevices[resourceName] = m.unhealthyDevices[resourceName].Union(healthyDevices)
 }
 
@@ -525,6 +536,7 @@ func (m *ManagerImpl) GetCapacity() (v1.ResourceList, v1.ResourceList, []string)
 	var allocatable = v1.ResourceList{}
 	deletedResources := sets.NewString()
 	m.mutex.Lock()
+	// 删除不存在 endpoints 中的 resource
 	for resourceName, devices := range m.healthyDevices {
 		eI, ok := m.endpoints[resourceName]
 		if (ok && eI.e.stopGracePeriodExpired()) || !ok {
@@ -566,6 +578,7 @@ func (m *ManagerImpl) GetCapacity() (v1.ResourceList, v1.ResourceList, []string)
 			klog.ErrorS(err, "Error on writing checkpoint")
 		}
 	}
+	// 返回资源总量 可分配资源 和 删除的资源
 	return capacity, allocatable, deletedResources.UnsortedList()
 }
 

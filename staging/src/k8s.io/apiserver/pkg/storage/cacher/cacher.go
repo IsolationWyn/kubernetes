@@ -201,6 +201,7 @@ func (t *watcherBookmarkTimeBuckets) popExpiredWatchers() [][]*cacheWatcher {
 	expiredWatchers := make([][]*cacheWatcher, 0, 2)
 	t.lock.Lock()
 	defer t.lock.Unlock()
+
 	for ; t.startBucketID <= currentBucketID; t.startBucketID++ {
 		if watchers, ok := t.watchersBuckets[t.startBucketID]; ok {
 			delete(t.watchersBuckets, t.startBucketID)
@@ -522,6 +523,7 @@ func (c *Cacher) Watch(ctx context.Context, key string, opts storage.ListOptions
 		c.Lock()
 		defer c.Unlock()
 		// Update watcher.forget function once we can compute it.
+		// 注册删除 watcher 的函数
 		watcher.forget = forgetWatcher(c, c.watcherIdx, triggerValue, triggerSupported)
 		c.watchers.addWatcher(watcher, c.watcherIdx, triggerValue, triggerSupported)
 
@@ -824,6 +826,9 @@ func (c *Cacher) dispatchEvents() {
 			// However, we then need to check if this was called as a result
 			// of a bookmark event or regular Add/Update/Delete operation by
 			// checking if resourceVersion here has changed.
+
+			// 不要分发从存储层到来的 bookmark, 它们可以非常频繁(甚至达到亚秒级), 以便在 kube-apiserver 重启的时候恢复 watch, 并且
+			// 将它们向下传播会导致整个系统过载
 			if event.Type != watch.Bookmark {
 				c.dispatchEvent(&event)
 			}
@@ -868,6 +873,7 @@ func setCachingObjects(event *watchCacheEvent, versioner storage.Versioner) {
 		// satisfied for the current version.
 		// This is rare enough that it doesn't justify making deep-copy of the
 		// object (done by newCachingObject) every time.
+
 	case watch.Deleted:
 		// Don't wrap Object for delete events - these are not to deliver any
 		// events. Only wrap PrevObject.
@@ -892,6 +898,7 @@ func (c *Cacher) dispatchEvent(event *watchCacheEvent) {
 	// Since add() can block, we explicitly add when cacher is unlocked.
 	// Dispatching event in nonblocking way first, which make faster watchers
 	// not be blocked by slower ones.
+
 	if event.Type == watch.Bookmark {
 		for _, watcher := range c.watchersBuffer {
 			watcher.nonblockingAdd(event)
@@ -986,7 +993,13 @@ func (c *Cacher) startDispatching(event *watchCacheEvent) {
 	// gain from avoiding memory allocations is much bigger.
 	c.watchersBuffer = c.watchersBuffer[:0]
 
+	//  * if type is bookmark: the object (instance of a type being watched) where
+	//    only resourceversion field is set. on successful restart of watch from a
+	//    bookmark resourceversion, client is guaranteed to not get repeat event
+	//    nor miss any events.
+	// bookmark 的事件只有 resourceVersion 会被设置, 客户端保证不会获取到重复的事件当 watch 重启
 	if event.Type == watch.Bookmark {
+		// watchCache 将 incoming channel 接收 watchCacheEvent 添加到 watchers 的 inputChan 中
 		c.startDispatchingBookmarkEvents()
 		// return here to reduce following code indentation and diff
 		return
@@ -1011,6 +1024,9 @@ func (c *Cacher) startDispatching(event *watchCacheEvent) {
 		// misconfiguration. Thus we paranoidly leave this branch.
 
 		// Iterate over watchers interested in exact values for all values.
+
+		// supported 为 false 通常意味着 trigger function 没有被定义(或者没有发现 indexes)
+		// 在这种情况下, watchers 过滤通常也没有生成触发值, 但是错误配置仍然可能出现问题
 		for _, watchers := range c.watchers.valueWatchers {
 			for _, watcher := range watchers {
 				c.watchersBuffer = append(c.watchersBuffer, watcher)

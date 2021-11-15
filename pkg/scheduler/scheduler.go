@@ -370,6 +370,9 @@ func updatePod(client clientset.Interface, pod *v1.Pod, condition *v1.PodConditi
 
 // assume signals to the cache that a pod is already in the cache, so that binding can be asynchronous.
 // assume modifies `assumed`.
+
+// 在 bind 阶段进行异步处理, 只会更新 cache 里的 pod 和 node 的信息, 这种基于乐观假设的 API 更新方式, 在 kubernetes 中称为 assume
+
 func (sched *Scheduler) assume(assumed *v1.Pod, host string) error {
 	// Optimistically assume that the binding will succeed and send it to apiserver
 	// in the background.
@@ -439,6 +442,7 @@ func (sched *Scheduler) finishBinding(fwk framework.Framework, assumed *v1.Pod, 
 
 // scheduleOne does the entire scheduling workflow for a single pod. It is serialized on the scheduling algorithm's host fitting.
 func (sched *Scheduler) scheduleOne(ctx context.Context) {
+	// 从 priority queue 中取出一个 pod
 	podInfo := sched.NextPod()
 	// pod could be nil when schedulerQueue is closed
 	if podInfo == nil || podInfo.Pod == nil {
@@ -519,6 +523,8 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	}
 
 	// Run the Reserve method of reserve plugins.
+	// Reserve 是一个信息性的扩展点。 管理运行时状态的插件（也成为“有状态插件”）应该使用此扩展点，以便 调度器在节点给指定 Pod
+	// 预留了资源时能够通知该插件。 这是在调度器真正将 Pod 绑定到节点之前发生的，并且它存在是为了防止 在调度器等待绑定成功时发生竞争情况。
 	if sts := fwk.RunReservePluginsReserve(schedulingCycleCtx, state, assumedPod, scheduleResult.SuggestedHost); !sts.IsSuccess() {
 		metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
 		// trigger un-reserve to clean up state associated with the reserved Pod
@@ -531,6 +537,14 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	}
 
 	// Run "permit" plugins.
+	// Permit 插件在每个 Pod 调度周期的最后调用，用于防止或延迟 Pod 的绑定
+	// 1.批准
+	// 一旦所有 Permit 插件批准 Pod 后，该 Pod 将被发送以进行绑定。
+	// 2. 拒绝
+	// 如果任何 Permit 插件拒绝 Pod，则该 Pod 将被返回到调度队列。 这将触发Unreserve 插件。
+	// 3. 等待（带有超时）
+	// 如果一个 Permit 插件返回 “等待” 结果，则 Pod 将保持在一个内部的 “等待中” 的 Pod 列表，同时该 Pod 的绑定周期启动时即
+	// 直接阻塞直到得到 批准。如果超时发生，等待 变成 拒绝，并且 Pod 将返回调度队列，从而触发 Unreserve 插件
 	runPermitStatus := fwk.RunPermitPlugins(schedulingCycleCtx, state, assumedPod, scheduleResult.SuggestedHost)
 	if runPermitStatus.Code() != framework.Wait && !runPermitStatus.IsSuccess() {
 		var reason string
@@ -577,6 +591,10 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		}
 
 		// Run "prebind" plugins.
+		// 预绑定
+		// 预绑定插件用于执行 Pod 绑定前所需的任何工作。 例如，一个预绑定插件可能需要提供网络卷并且在允许 Pod 运行在该节点之前 将其挂载到目标节点上。
+		// 如果任何 PreBind 插件返回错误，则 Pod 将被拒绝 并且 退回到调度队列中
+
 		preBindStatus := fwk.RunPreBindPlugins(bindingCycleCtx, state, assumedPod, scheduleResult.SuggestedHost)
 		if !preBindStatus.IsSuccess() {
 			metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
@@ -589,6 +607,8 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			return
 		}
 
+		// Bind 插件用于将 Pod 绑定到节点上。直到所有的 PreBind 插件都完成，Bind 插件才会被调用。
+		// 各绑定插件按照配置顺序被调用。绑定插件可以选择是否处理指定的 Pod。 如果绑定插件选择处理 Pod，剩余的绑定插件将被跳过
 		err := sched.bind(bindingCycleCtx, fwk, assumedPod, scheduleResult.SuggestedHost, state)
 		if err != nil {
 			metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))

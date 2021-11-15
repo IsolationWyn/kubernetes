@@ -146,13 +146,13 @@ func TestCacheWatcherHandlesFiltering(t *testing.T) {
 					PrevObject:      &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "2"}},
 					PrevObjFields:   fields.Set{"spec.nodeName": ""},
 					Object:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "3"}},
-					ObjFields:       fields.Set{"spec.nodeName": "host"},
+					ObjFields:       fields.Set{"spec.nodeName": ""},
 					ResourceVersion: 3,
 				},
 				{
 					Type:            watch.Modified,
 					PrevObject:      &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "3"}},
-					PrevObjFields:   fields.Set{"spec.nodeName": "host"},
+					PrevObjFields:   fields.Set{"spec.nodeName": ""},
 					Object:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "4"}},
 					ObjFields:       fields.Set{"spec.nodeName": "host"},
 					ResourceVersion: 4,
@@ -162,22 +162,30 @@ func TestCacheWatcherHandlesFiltering(t *testing.T) {
 					PrevObject:      &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "4"}},
 					PrevObjFields:   fields.Set{"spec.nodeName": "host"},
 					Object:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "5"}},
-					ObjFields:       fields.Set{"spec.nodeName": ""},
+					ObjFields:       fields.Set{"spec.nodeName": "host"},
 					ResourceVersion: 5,
 				},
+				// {
+				// 	Type:            watch.Modified,
+				// 	PrevObject:      &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "5"}},
+				// 	PrevObjFields:   fields.Set{"spec.nodeName": "host"},
+				// 	Object:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "6"}},
+				// 	ObjFields:       fields.Set{"spec.nodeName": ""},
+				// 	ResourceVersion: 6,
+				// },
 				{
 					Type:            watch.Modified,
 					PrevObject:      &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "5"}},
-					PrevObjFields:   fields.Set{"spec.nodeName": ""},
+					PrevObjFields:   fields.Set{"spec.nodeName": "host"},
 					Object:          &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "6"}},
 					ObjFields:       fields.Set{"spec.nodeName": ""},
 					ResourceVersion: 6,
 				},
 			},
 			expected: []watch.Event{
-				{Type: watch.Added, Object: &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "3"}}},
-				{Type: watch.Modified, Object: &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "4"}}},
-				{Type: watch.Deleted, Object: &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "5"}}},
+				{Type: watch.Added, Object: &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "4"}}},
+				{Type: watch.Modified, Object: &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "5"}}},
+				{Type: watch.Deleted, Object: &v1.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "6"}}},
 			},
 		},
 	}
@@ -196,6 +204,8 @@ TestCase:
 		ch := w.ResultChan()
 		for j, event := range testCase.expected {
 			e := <-ch
+			pod := e.Object.(*v1.Pod)
+			fmt.Println(i, e.Type, pod.ObjectMeta.ResourceVersion)
 			if !reflect.DeepEqual(event, e) {
 				t.Errorf("%d: unexpected event %d: %s", i, j, diff.ObjectReflectDiff(event, e))
 				break TestCase

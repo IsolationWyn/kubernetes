@@ -55,6 +55,9 @@ type Broadcaster struct {
 	// It's more fair to do this on a per-watcher basis than to do it on the
 	// "incoming" channel, which would allow one slow watcher to prevent all
 	// other watchers from getting new events.
+
+	// 如果 watch channels 有一个满了, 不会等它变空, 直接分发到还有空间的 watchers 并且处理下一个 event
+	// 在每隔 watcher 的基础上这么做比在 "传入" 通道上这样做更加公平, 因为这将允许一个缓慢的 watcher 避免其他 wathcer 获得新事件
 	fullChannelBehavior FullChannelBehavior
 }
 
@@ -93,6 +96,7 @@ func NewLongQueueBroadcaster(queueLength int, fullChannelBehavior FullChannelBeh
 const internalRunFunctionMarker = "internal-do-function"
 
 // a function type we can shoehorn into the queue.
+// 可以塞入队列的一种方法
 type functionFakeRuntimeObject func()
 
 func (obj functionFakeRuntimeObject) GetObjectKind() schema.ObjectKind {
@@ -110,6 +114,8 @@ func (obj functionFakeRuntimeObject) DeepCopyObject() runtime.Object {
 // The purpose of this terrible hack is so that watchers added after an event
 // won't ever see that event, and will always see any event after they are
 // added.
+
+// 阻塞queue直到它排除事件, 保证在一个事件之后被加入的 watcher 不会看到该事件, 并且能接收到之后所有的事件
 func (m *Broadcaster) blockQueue(f func()) {
 	select {
 	case <-m.stopped:
@@ -132,6 +138,8 @@ func (m *Broadcaster) blockQueue(f func()) {
 // Note: new watchers will only receive new events. They won't get an entire history
 // of previous events. It will block until the watcher is actually added to the
 // broadcaster.
+// 新增一个 wacther 到 list 中并返回接口
+// 新的 watchers 只会接收到新的事件, 他们不会获取到之前的整段历史事件, 它将会阻塞直到 watcher 被加入到 broadcast 中
 func (m *Broadcaster) Watch() Interface {
 	var w *broadcasterWatcher
 	m.blockQueue(func() {
@@ -241,6 +249,7 @@ func (m *Broadcaster) Shutdown() {
 }
 
 // loop receives from m.incoming and distributes to all watchers.
+// loop 从 m.incoming 中接收事件然后分发到所有的 watcher 中
 func (m *Broadcaster) loop() {
 	// Deliberately not catching crashes here. Yes, bring down the process if there's a
 	// bug in watch.Broadcaster.
@@ -256,12 +265,14 @@ func (m *Broadcaster) loop() {
 }
 
 // distribute sends event to all watchers. Blocking.
+// 分发事件到所有的 watchers 中
 func (m *Broadcaster) distribute(event Event) {
 	if m.fullChannelBehavior == DropIfChannelFull {
 		for _, w := range m.watchers {
 			select {
 			case w.result <- event:
 			case <-w.stopped:
+			// 这里会丢弃事件?
 			default: // Don't block if the event can't be queued.
 			}
 		}

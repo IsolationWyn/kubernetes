@@ -267,7 +267,9 @@ func NewPriorityQueue(
 
 // Run starts the goroutine to pump from podBackoffQ to activeQ
 func (p *PriorityQueue) Run() {
+	// 把 backoff queue 中超过 backoff 时间的 pod 刷入 active queue
 	go wait.Until(p.flushBackoffQCompleted, 1.0*time.Second, p.stop)
+	// 把  backoff queue 中超过规定调度时间的 pod 刷入 active queue
 	go wait.Until(p.flushUnschedulableQLeftover, 30*time.Second, p.stop)
 }
 

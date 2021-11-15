@@ -429,6 +429,9 @@ type EventCorrelateResult struct {
 //     times.
 //   * A source may burst 25 events about an object, but has a refill rate budget
 //     per object of 1 event every 5 minutes to control long-tail of spam.
+
+// 在 10 分钟内记录 10 次的相同的事件会被聚合记录, 并且事件的 count 会增长
+// 一个资源可能会爆发 25 个关于某个对象的事件, 但是每五分钟才会重新填充一个流控桶 event 来控制垃圾事件的长尾效应
 func NewEventCorrelator(clock clock.Clock) *EventCorrelator {
 	cacheSize := maxLruCacheEntries
 	spamFilter := NewEventSourceObjectSpamFilter(cacheSize, defaultSpamBurst, defaultSpamQPS, clock)
@@ -493,6 +496,7 @@ func populateDefaults(options CorrelatorOptions) CorrelatorOptions {
 }
 
 // EventCorrelate filters, aggregates, counts, and de-duplicates all incoming events
+// 在这里 过滤 聚合 计数 去重所有事件
 func (c *EventCorrelator) EventCorrelate(newEvent *v1.Event) (*EventCorrelateResult, error) {
 	if newEvent == nil {
 		return nil, fmt.Errorf("event is nil")

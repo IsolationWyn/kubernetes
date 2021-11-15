@@ -88,6 +88,7 @@ func (t *timeoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	timeoutCh := r.Context().Done()
 
 	// resultCh is used as both errCh and stopCh
+	// 无缓冲 channel 对应 105行的发送和123行的接收
 	resultCh := make(chan interface{})
 	tw := newTimeoutWriter(w)
 	go func() {
